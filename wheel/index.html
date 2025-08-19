@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Luck of the Irish Spin Wheel</title>
+<style>
+/* probability table layout + alignment */
+.prob-table{
+  margin:10px auto;
+  border-collapse:collapse;
+  background:rgba(0,0,0,.2);
+  border-radius:8px;
+  overflow:hidden;
+  width:min(900px,100%);
+  table-layout:fixed;
+}
+.prob-table th,.prob-table td{
+  padding:8px 12px;
+  border-bottom:1px solid rgba(255,255,255,.15);
+}
+.prob-table th:nth-child(1), .prob-table td:nth-child(1){ text-align:left;  }
+.prob-table th:nth-child(2), .prob-table td:nth-child(2){ text-align:center;}
+.prob-table th:nth-child(3), .prob-table td:nth-child(3){ text-align:right; }
+
+/* theme */
+:root{
+  --green:#0e5a2a;
+  --gold:#d2a73a;
+  --cream:#f9f3dc;
+  --brown:#6b4b2a;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;
+  font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif;
+  background: radial-gradient(1200px 700px at 20% -10%, #1b7a3c 0%, #0e5a2a 40%, #0a3b1d 100%);
+  color:var(--cream);
+}
+header{text-align:center;padding:24px 12px 8px;}
+h1{margin:0;font-size:clamp(28px,4vw,44px);letter-spacing:.5px}
+.sub{opacity:.9;margin-top:4px;font-weight:600}
+.wrap{
+  display:grid; grid-template-columns: 1.2fr 1fr 1.2fr;
+  gap:18px; padding:16px; max-width:1100px; margin:0 auto 24px;
+}
+.card{
+  background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+  border:1px solid rgba(255,255,255,.15);
+  border-radius:18px; box-shadow:0 10px 24px rgba(0,0,0,.25); padding:14px;
+}
+.poster{width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.25);box-shadow:0 6px 22px rgba(0,0,0,.35);object-fit:cover}
+
+/* wheel + pointer overlay */
+.wheel-wrap{ position:relative; width:100%; }
+canvas{ width:100%; height:auto; display:block; }
+.pointer{
+  position:absolute;
+  top:-20px;                 /* nudge so the tip just touches the rim */
+  left:50%;
+  transform:translateX(-50%);
+  width:0; height:0;
+  border-left:12px solid transparent;
+  border-right:12px solid transparent;
+  border-top:22px solid #6b4b2a;   /* brown; uses border-TOP for a down-pointing triangle */
+  border-bottom:0;
+  filter: drop-shadow(0 2px 2px rgba(0,0,0,.4));
+  z-index:2;
+  pointer-events:none;
+}
+
+.controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center;margin-top:12px}
+button{
+  background: linear-gradient(180deg, var(--gold), #b78824);
+  color:#1b1406;border:0;padding:12px 18px;font-weight:800;border-radius:12px;cursor:pointer;letter-spacing:.3px;
+  box-shadow:0 6px 0 #7b5b18, 0 10px 22px rgba(0,0,0,.35);
+  transition: transform .05s ease, filter .2s ease;
+}
+button:active{transform:translateY(2px);box-shadow:0 4px 0 #7b5b18, 0 8px 18px rgba(0,0,0,.35)}
+button[disabled]{filter:grayscale(.3) brightness(.8);cursor:not-allowed}
+.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:8px;font-weight:700}
+.stat{background:rgba(0,0,0,.2);padding:10px;border-radius:12px;text-align:center}
+.big{font-size:22px}
+table{width:100%;border-collapse:collapse;margin-top:10px;font-size:14px}
+th,td{border-bottom:1px solid rgba(255,255,255,.15);padding:8px 6px;text-align:right}
+th{text-align:right;color:#ffeec1;font-weight:800}
+td:first-child,th:first-child{text-align:left}
+.win{color:#c9ff95}.loss{color:#ffd0d0}
+.final{margin-top:12px;padding:12px;border-radius:12px;background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.18)}
+.note{opacity:.8;font-size:13px;margin-top:6px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Luck of the Irish Spin Wheel</h1>
+  <div class="sub">$5 per play · payouts: $0, $7, $15, $25</div>
+
+  <table class="prob-table">
+    <colgroup>
+      <col style="width:32%"><col style="width:44%"><col style="width:24%">
+    </colgroup>
+    <thead>
+      <tr><th>Color</th><th>Prize</th><th>Probability</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Red</td>    <td>$0 (Hard Luck)</td> <td>57%</td></tr>
+      <tr><td>Yellow</td> <td>$7</td>             <td>31%</td></tr>
+      <tr><td>Orange</td> <td>$15</td>            <td>8%</td></tr>
+      <tr><td>Green</td>  <td>$25</td>            <td>4%</td></tr>
+    </tbody>
+  </table>
+</header>
+
+<main class="wrap">
+  <section class="card">
+    <img class="poster" src="wheel.jpg" alt="luck of the irish poster" />
+  </section>
+
+  <section class="card">
+    <div class="wheel-wrap">
+      <canvas id="wheel" width="520" height="520" aria-label="spin wheel"></canvas>
+      <div class="pointer" aria-hidden="true"></div>
+    </div>
+    <div class="controls">
+      <button id="spinBtn">Spin</button>
+      <button id="resetBtn" style="background:linear-gradient(180deg,#eee,#ddd); color:#111; box-shadow:0 6px 0 #8a8a8a,0 10px 22px rgba(0,0,0,.35)">Reset</button>
+    </div>
+    <div class="stats">
+      <div class="stat">Spins left<br><span id="spinsLeft" class="big">10</span></div>
+      <div class="stat">Bankroll<br>$<span id="bankroll" class="big">50.00</span></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h3 style="margin:6px 0 4px">Spin log</h3>
+    <table id="logTable">
+      <thead><tr><th>#</th><th>Result</th><th>Net Gain/Loss</th><th>Bankroll</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div id="final" class="final" style="display:none"></div>
+  </section>
+</main>
+
+<script>
+/* ------------------ config ------------------ */
+const PRIZES = [
+  { label:"HARD LUCK", amount:0,  color:"#d6362f", weight:57 }, // red
+  { label:"$7",        amount:7,  color:"#f6e24b", weight:31 }, // yellow
+  { label:"$15",       amount:15, color:"#d7a743", weight:8  }, // orange/gold
+  { label:"$25",       amount:25, color:"#2b7750", weight:4  }  // green
+];
+// slice angles in degrees for 57% / 31% / 8% / 4% (sum = 360)
+const SLICE_DEG = [205.2, 111.6, 28.8, 14.4];
+
+const COST_PER_SPIN = 5;
+const START_BANKROLL = 50;
+const MAX_SPINS = 10;
+
+/* ------------------ state ------------------ */
+let spinsLeft = MAX_SPINS;
+let bankroll  = START_BANKROLL;
+let rotation  = 0;       // radians (clockwise-positive)
+let spinning  = false;
+const history = [];
+
+/* ------------------ canvas ------------------ */
+const canvas = document.getElementById('wheel');
+const ctx    = canvas.getContext('2d');
+const cx = canvas.width/2, cy = canvas.height/2, R = Math.min(cx, cy)-8;
+
+// draw slices starting at top (-90°) plus current rotation
+function drawWheel(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  const startAt = -Math.PI/2 + rotation;
+
+  let acc = 0;
+  for (let i=0;i<PRIZES.length;i++){
+    const sweep = SLICE_DEG[i] * Math.PI/180;
+
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, R, startAt + acc, startAt + acc + sweep);
+    ctx.closePath();
+    ctx.fillStyle = PRIZES[i].color;
+    ctx.fill();
+
+    ctx.strokeStyle = "rgba(0,0,0,.35)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // label
+    const mid = startAt + acc + sweep/2;
+    const rx = cx + Math.cos(mid) * (R*0.62);
+    const ry = cy + Math.sin(mid) * (R*0.62);
+    ctx.save();
+    ctx.translate(rx, ry);
+    ctx.rotate(mid + Math.PI/2);
+    ctx.fillStyle = "#fff4d6";
+    ctx.font = "bold 22px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(PRIZES[i].amount===0 ? "HARD LUCK" : "$"+PRIZES[i].amount, 0, 0);
+    ctx.restore();
+
+    acc += sweep;
+  }
+
+  // hub
+  ctx.beginPath();
+  ctx.arc(cx, cy, 20, 0, Math.PI*2);
+  ctx.fillStyle = "#123f24"; ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,.35)"; ctx.lineWidth = 3; ctx.stroke();
+
+  // rim
+  ctx.beginPath();
+  ctx.arc(cx, cy, R, 0, Math.PI*2);
+  ctx.lineWidth = 8; ctx.strokeStyle = "rgba(255,220,120,.55)"; ctx.stroke();
+}
+drawWheel();
+
+/* ------------------ helpers ------------------ */
+// weighted random pick (uses PRIZES[i].weight)
+function pickWeightedIndex(){
+  const total = PRIZES.reduce((s,p)=>s+p.weight,0);
+  let r = Math.random()*total;
+  for (let i=0;i<PRIZES.length;i++){
+    if (r < PRIZES[i].weight) return i;
+    r -= PRIZES[i].weight;
+  }
+  return PRIZES.length-1;
+}
+// start angle (deg from top, clockwise) of slice i
+function sliceStartDeg(i){
+  let d = 0; for (let k=0;k<i;k++) d += SLICE_DEG[k]; return d;
+}
+
+/* ------------------ spin: decide first, then move wheel ---------------- */
+function spinOnce(){
+  if (spinning || spinsLeft <= 0) return;
+
+  // charge player
+  spinsLeft--;
+  bankroll -= COST_PER_SPIN;
+
+  // 1) choose winning slice by weights
+  const idx = pickWeightedIndex();
+  const prize = PRIZES[idx].amount;
+
+  // 2) compute the final rotation so the CENTER of that slice is at 12 o'clock
+  const centerDeg = sliceStartDeg(idx) + SLICE_DEG[idx]/2; // 0..360 from top, clockwise
+  // with our draw convention, angle at top corresponds to -rotation (in deg) mod 360
+  // so set -finalRotation ≡ centerDeg (mod 360) => finalRotation ≡ -centerDeg
+  const desiredRotDeg = (360 - (centerDeg % 360)) % 360;
+
+  // compute delta from current to desired + some full turns
+  const currentDeg = ((rotation * 180/Math.PI) % 360 + 360) % 360;
+  const baseDelta  = (desiredRotDeg - currentDeg + 360) % 360;
+  const extraTurns = (Math.floor(Math.random()*2) + 4) * 360; // 4–5 spins
+  const finalRotation = rotation + (baseDelta + extraTurns) * Math.PI/180;
+
+  // 3) animate, then pay out (result already chosen)
+  spinning = true;
+  const duration = 2200 + Math.random()*600;
+  const startT = performance.now();
+  const startRot = rotation;
+  const easeOutCubic = t => 1 - Math.pow(1 - t, 3);
+
+  function frame(now){
+    const t = Math.min(1, (now - startT)/duration);
+    rotation = startRot + (finalRotation - startRot) * easeOutCubic(t);
+    drawWheel();
+    if (t < 1){
+      requestAnimationFrame(frame);
+    } else {
+      spinning = false;
+      rotation = finalRotation; // lock
+      bankroll += prize;
+      appendLog(idx, prize);
+      updateHUD();
+      if (spinsLeft === 0) finishGame();
+    }
+  }
+  requestAnimationFrame(frame);
+}
+
+/* ------------------ UI helpers ------------------ */
+const spinBtn  = document.getElementById('spinBtn');
+const resetBtn = document.getElementById('resetBtn');
+const spinsLeftEl = document.getElementById('spinsLeft');
+const bankrollEl  = document.getElementById('bankroll');
+const logBody     = document.querySelector('#logTable tbody');
+const finalEl     = document.getElementById('final');
+
+function money(v){ return v.toFixed(2); }
+function updateHUD(){
+  spinsLeftEl.textContent = spinsLeft;
+  bankrollEl.textContent = money(bankroll);
+  spinBtn.disabled = spinning || spinsLeft<=0;
+}
+function appendLog(idx, prize){
+  const spinNo = MAX_SPINS - spinsLeft;
+  const delta  = prize - COST_PER_SPIN;
+
+  const tr = document.createElement('tr');
+  const c1 = document.createElement('td'); c1.textContent = spinNo;
+  const c2 = document.createElement('td'); c2.textContent = (prize===0?"Hard Luck":`$${prize}`);
+  const c3 = document.createElement('td'); c3.textContent = (delta>=0?"+":"") + "$" + money(delta);
+  c3.className = delta>=0 ? "win" : "loss";
+  const c4 = document.createElement('td'); c4.textContent = "$" + money(bankroll);
+  tr.append(c1,c2,c3,c4);
+  logBody.appendChild(tr);
+}
+function finishGame(){
+  spinBtn.disabled = true;
+  const totalSpent = MAX_SPINS * COST_PER_SPIN;
+  const totalWon   = Array.from(logBody.querySelectorAll('tr')).reduce((s,tr)=>{
+    const txt = tr.children[1].textContent.trim();
+    const v = txt==="Hard Luck" ? 0 : Number(txt.replace("$",""));
+    return s+v;
+  },0);
+  const net = totalWon - totalSpent;
+  finalEl.style.display = "block";
+  finalEl.innerHTML = `
+    <div style="font-weight:800; font-size:18px; margin-bottom:6px">Final Result</div>
+    You spent $${money(totalSpent)} and won $${money(totalWon)}.<br/>
+    Net ${net>=0?"gain":"loss"}: <span class="${net>=0?"win":"loss"}" style="font-weight:800">$${money(net)}</span>.<br/>
+    Ending bankroll: <strong>$${money(bankroll)}</strong>.
+    <div class="note">Each spin costs $${COST_PER_SPIN.toFixed(2)}. Payouts (probability): Hard luck 57%, $7 31%, $15 8%, $25 4%.</div>
+  `;
+}
+function resetGame(){
+  spinsLeft = MAX_SPINS; bankroll = START_BANKROLL; rotation = 0; spinning = false;
+  logBody.innerHTML = ""; finalEl.style.display = "none";
+  updateHUD(); drawWheel();
+}
+
+/* ------------------ wire up ------------------ */
+spinBtn.addEventListener('click', spinOnce);
+resetBtn.addEventListener('click', resetGame);
+updateHUD();
+</script>
+</body>
+</html>
